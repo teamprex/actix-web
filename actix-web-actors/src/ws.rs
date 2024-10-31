@@ -87,7 +87,7 @@ use bytestring::ByteString;
 use futures_core::Stream;
 use pin_project_lite::pin_project;
 use tokio::sync::oneshot;
-use tokio_util::codec::{Decoder as _, Encoder as _};
+use tokio_util::codec::{Decoder, Encoder};
 
 /// Builder for Websocket session response.
 ///
@@ -573,22 +573,29 @@ where
     }
 
     /// Create a new Websocket context
-    pub fn with_factory<S, F>(stream: S, f: F) -> impl Stream<Item = Result<Bytes, Error>>
+    pub fn with_factory<S, F, C, D>(
+        stream: S,
+        f: F,
+        coder: C,
+        decoder: D,
+    ) -> impl Stream<Item = Result<Bytes, Error>>
     where
         F: FnOnce(&mut Self) -> A + 'static,
         A: StreamHandler<Result<Message, ProtocolError>>,
         S: Stream<Item = Result<Bytes, PayloadError>> + 'static,
+        C: Encoder<Message, Error = ProtocolError> + Unpin,
+        D: Decoder<Item = Frame, Error = ProtocolError> + 'static,
     {
         let mb = Mailbox::default();
         let mut ctx = WebsocketContext {
             inner: ContextParts::new(mb.sender_producer()),
             messages: VecDeque::new(),
         };
-        ctx.add_stream(WsStream::new(stream, Codec::new()));
+        ctx.add_stream(WsStream::new(stream, decoder));
 
         let act = f(&mut ctx);
 
-        WebsocketContextFut::new(ctx, act, mb, Codec::new())
+        WebsocketContextFut::new(ctx, act, mb, coder)
     }
 }
 
@@ -661,34 +668,35 @@ where
     }
 }
 
-struct WebsocketContextFut<A>
+struct WebsocketContextFut<A, C>
 where
     A: Actor<Context = WebsocketContext<A>>,
 {
     fut: ContextFut<A, WebsocketContext<A>>,
-    encoder: Codec,
+    encoder: C,
     buf: BytesMut,
     closed: bool,
 }
 
-impl<A> WebsocketContextFut<A>
+impl<A, C> WebsocketContextFut<A, C>
 where
     A: Actor<Context = WebsocketContext<A>>,
 {
-    fn new(ctx: WebsocketContext<A>, act: A, mailbox: Mailbox<A>, codec: Codec) -> Self {
+    fn new(ctx: WebsocketContext<A>, act: A, mailbox: Mailbox<A>, encoder: C) -> Self {
         let fut = ContextFut::new(ctx, act, mailbox);
         WebsocketContextFut {
             fut,
-            encoder: codec,
+            encoder,
             buf: BytesMut::new(),
             closed: false,
         }
     }
 }
 
-impl<A> Stream for WebsocketContextFut<A>
+impl<A, C> Stream for WebsocketContextFut<A, C>
 where
     A: Actor<Context = WebsocketContext<A>>,
+    C: Encoder<Message, Error = ProtocolError> + Unpin,
 {
     type Item = Result<Bytes, Error>;
 
@@ -732,32 +740,33 @@ where
 
 pin_project! {
     #[derive(Debug)]
-    struct WsStream<S> {
+    struct WsStream<S, D> {
         #[pin]
         stream: S,
-        decoder: Codec,
+        decoder: D,
         buf: BytesMut,
         closed: bool,
     }
 }
 
-impl<S> WsStream<S>
+impl<S, D> WsStream<S, D>
 where
     S: Stream<Item = Result<Bytes, PayloadError>>,
 {
-    fn new(stream: S, codec: Codec) -> Self {
+    fn new(stream: S, decoder: D) -> Self {
         Self {
             stream,
-            decoder: codec,
+            decoder,
             buf: BytesMut::new(),
             closed: false,
         }
     }
 }
 
-impl<S> Stream for WsStream<S>
+impl<S, D> Stream for WsStream<S, D>
 where
     S: Stream<Item = Result<Bytes, PayloadError>>,
+    D: Decoder<Item = Frame, Error = ProtocolError>,
 {
     type Item = Result<Message, ProtocolError>;
 
