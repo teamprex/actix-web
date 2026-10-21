@@ -69,7 +69,9 @@ rustls-0_22-native-roots = ["tls-rustls-0_22", "actix-tls/rustls-0_22-native-roo
 # TLS via Rustls v0.23
 rustls-0_23 = ["tls-rustls-0_23", "actix-tls/rustls-0_23"]
 # TLS via Rustls v0.23 (WebPKI roots)
-rustls-0_23-webpki-roots = ["rustls-0_23", "actix-tls/rustls-0_23-webpki-roots"]
+# Uses webpki-roots v1 directly instead of `actix-tls/rustls-0_23-webpki-roots`, which still
+# depends on webpki-roots v0.26 (RUSTSEC-2026-0381). Revert once actix-tls moves to v1.
+rustls-0_23-webpki-roots = ["rustls-0_23", "dep:webpki-roots-1"]
 # TLS via Rustls v0.23 (Native roots)
 rustls-0_23-native-roots = ["rustls-0_23", "actix-tls/rustls-0_23-native-roots"]
 
@@ -129,6 +131,7 @@ tls-rustls-0_20 = { package = "rustls", version = "0.20", optional = true, featu
 tls-rustls-0_21 = { package = "rustls", version = "0.21", optional = true, features = ["dangerous_configuration"] }
 tls-rustls-0_22 = { package = "rustls", version = "0.22", optional = true }
 tls-rustls-0_23 = { package = "rustls", version = "0.23", optional = true, default-features = false }
+webpki-roots-1 = { package = "webpki-roots", version = "1.0.10", optional = true }
 
 trust-dns-resolver = { version = "0.23", optional = true }
 

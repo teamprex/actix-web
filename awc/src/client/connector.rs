@@ -113,13 +113,15 @@ impl Connector<()> {
             ///
             /// Note that if other TLS crate features are enabled, Rustls v0.23 will be used.
             fn build_tls(protocols: Vec<Vec<u8>>) -> OurTlsConnector {
-                use actix_tls::connect::rustls_0_23::{self, reexports::ClientConfig};
+                use actix_tls::connect::rustls_0_23::reexports::ClientConfig;
 
                 cfg_if::cfg_if! {
                     if #[cfg(feature = "rustls-0_23-webpki-roots")] {
-                        let certs = rustls_0_23::webpki_roots_cert_store();
+                        // Built from webpki-roots v1 directly; see the feature note in Cargo.toml.
+                        let mut certs = tls_rustls_0_23::RootCertStore::empty();
+                        certs.extend(webpki_roots_1::TLS_SERVER_ROOTS.iter().cloned());
                     } else if #[cfg(feature = "rustls-0_23-native-roots")] {
-                        let certs = rustls_0_23::native_roots_cert_store().expect("Failed to find native root certificates");
+                        let certs = actix_tls::connect::rustls_0_23::native_roots_cert_store().expect("Failed to find native root certificates");
                     }
                 }
 

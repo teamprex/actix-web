@@ -13,7 +13,6 @@ use std::{
 use actix_http::HttpService;
 use actix_http_test::test_server;
 use actix_service::{fn_service, map_config, ServiceFactoryExt};
-use actix_tls::connect::rustls_0_23::webpki_roots_cert_store;
 use actix_utils::future::ok;
 use actix_web::{dev::AppConfig, http::Version, web, App, HttpResponse};
 use rustls::{
@@ -114,8 +113,11 @@ async fn test_connection_reuse_h2() {
     })
     .await;
 
+    let mut roots = rustls::RootCertStore::empty();
+    roots.extend(webpki_roots_1::TLS_SERVER_ROOTS.iter().cloned());
+
     let mut config = ClientConfig::builder()
-        .with_root_certificates(webpki_roots_cert_store())
+        .with_root_certificates(roots)
         .with_no_client_auth();
 
     let protos = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
